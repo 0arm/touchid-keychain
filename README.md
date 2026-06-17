@@ -39,13 +39,20 @@ A typical `package.json`:
 
 ## Seeding the keychain
 
-Use the `keychain` subcommand for raw access (no dotenvx involved):
+One-time: pull `DOTENV_PRIVATE_KEY` out of `.env.keys` into the keychain (service/account come from the convention, so usually no args):
 
 ```bash
-# store the dotenvx private key (read it out of .env.keys, then drop it from there)
-grep '^DOTENV_PRIVATE_KEY=' .env.keys | cut -d= -f2- | touchenv keychain set -s my-app-dotenv DOTENV_PRIVATE_KEY
+touchenv keychain seed
+# then: set DOTENV_USE_KEYCHAIN=true and delete DOTENV_PRIVATE_KEY from .env.keys
+```
 
+Override the source or names if needed: `touchenv keychain seed -s <service> -a <account> --from <file>`.
+
+The lower-level `keychain` subcommands are there too:
+
+```bash
 touchenv keychain get -s my-app-dotenv DOTENV_PRIVATE_KEY
+printf '%s' "$SECRET" | touchenv keychain set -s my-app-dotenv DOTENV_PRIVATE_KEY
 ```
 
 `touchenv keychain run -s <service> <account> [--as VAR] [--gate ENV] -- <cmd…>` is the generic primitive `touchenv` is built on: fetch one secret (Touch ID), export it as `VAR`, exec `<cmd>`.
