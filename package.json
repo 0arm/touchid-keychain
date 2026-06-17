@@ -1,0 +1,32 @@
+{
+  "name": "touchid-keychain",
+  "version": "0.1.0",
+  "description": "Store and retrieve secrets in the macOS login Keychain, gated by Touch ID. No Apple Developer cert required.",
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "bin": {
+    "touchid-keychain": "cli.js"
+  },
+  "files": [
+    "index.js",
+    "cli.js",
+    "build.js",
+    "src/keychain-touchid.swift"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "macos",
+    "keychain",
+    "touchid",
+    "biometrics",
+    "secrets",
+    "security"
+  ],
+  "license": "MIT"
+}
