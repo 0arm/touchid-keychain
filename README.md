@@ -34,6 +34,15 @@ The secret is exported as the account name by default; use `--as VAR` to rename
 it. If the Touch ID prompt is denied, `run` exits non-zero and the command never
 starts.
 
+**Make it opt-in** with `--gate <ENV>`: the keychain is only touched when `<ENV>`
+is truthy (`true`/`1`/`yes`/`on`), checked in the environment first and then in
+`.env.local` / `.env`. Otherwise the command runs unchanged, with no prompt — so
+a teammate who hasn't opted in is unaffected:
+
+```jsonc
+"dev": "touchid-keychain run -s my-app DOTENV_PRIVATE_KEY --gate USE_KEYCHAIN -- dotenvx run -- next dev"
+```
+
 ## Install
 
 ```bash
