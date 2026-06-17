@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from 'node:fs'
 import { Keychain } from './index.js'
+import { isEnabled } from './util.js'
 
 function usage(code = 1) {
   process.stderr.write(`touchid-keychain — Touch ID-gated macOS Keychain access
@@ -72,19 +72,6 @@ function parseFlags(args) {
     else account = args[i]
   }
   return { service, account, as, gate }
-}
-
-// Truthy if `name` is set to true/1/yes/on — checked in the environment first,
-// then in .env.local / .env (the toggle is a plaintext flag, not a secret).
-function isEnabled(name) {
-  const truthy = v => /^(true|1|yes|on)$/i.test(String(v).trim().replace(/^["']|["']$/g, ''))
-  if (process.env[name] != null) return truthy(process.env[name])
-  for (const file of ['.env.local', '.env']) {
-    if (!existsSync(file)) continue
-    const line = readFileSync(file, 'utf8').split('\n').find(l => l.startsWith(name + '='))
-    if (line) return truthy(line.slice(name.length + 1))
-  }
-  return false
 }
 
 function readStdin() {

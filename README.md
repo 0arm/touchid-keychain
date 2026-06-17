@@ -51,6 +51,35 @@ npm install github:0arm/touchid-keychain
 
 Requires **macOS** with a Touch ID sensor and the **Xcode Command Line Tools** (`xcode-select --install`) — the tiny Swift helper is compiled on first use and cached under `~/.cache/touchid-keychain/`.
 
+## `touchenv` — keychain-aware dotenvx
+
+The package also ships a `touchenv` bin: a thin front end that forwards every
+argument to the real `dotenvx`, but first injects `DOTENV_PRIVATE_KEY` from the
+Keychain (one Touch ID prompt) when opted in. dotenvx stays vanilla — no fork.
+
+```bash
+touchenv decrypt
+touchenv run --convention=nextjs -- next dev
+```
+
+Install it globally and it works in any project:
+
+```bash
+bun add -g github:0arm/touchid-keychain
+```
+
+Zero config by convention — `service` = `"<package-name>-dotenv"`, `account` =
+`DOTENV_PRIVATE_KEY`, opt-in gate = `DOTENV_USE_KEYCHAIN`. When the gate isn't
+truthy, `touchenv` is a transparent passthrough to dotenvx (no prompt), so it's
+safe in a shared `package.json`. Override any default per project:
+
+```jsonc
+// package.json
+"touchid-keychain": { "service": "my-svc", "account": "DOTENV_PRIVATE_KEY", "gate": "USE_KEYCHAIN" }
+```
+
+It runs the project-local `dotenvx` if present, else one on `PATH`.
+
 ## How it works (and what it does / doesn't protect)
 
 macOS's built-in `security` CLI can store and read Keychain items but **cannot gate them on Touch ID** — biometric-gated items live in the *data-protection keychain*, which requires a provisioning-profile'd app bundle a bare CLI can't be.
