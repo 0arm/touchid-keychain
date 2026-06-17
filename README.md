@@ -19,7 +19,7 @@ npx touchid-keychain get -s my-app API_KEY
 ## Install
 
 ```bash
-npm install github:<you>/touchid-keychain
+npm install github:0arm/touchid-keychain
 ```
 
 Requires **macOS** with a Touch ID sensor and the **Xcode Command Line Tools** (`xcode-select --install`) — the tiny Swift helper is compiled on first use and cached under `~/.cache/touchid-keychain/`.
