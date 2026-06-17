@@ -49,7 +49,7 @@ a teammate who hasn't opted in is unaffected:
 npm install github:0arm/touchid-keychain
 ```
 
-Requires **macOS** with a Touch ID sensor and the **Xcode Command Line Tools** (`xcode-select --install`) — the tiny Swift helper is compiled on first use and cached under `~/.cache/touchid-keychain/`.
+Installs on **any platform** — the Swift helper compiles lazily on first use, so nothing native runs at install time. The **keychain features** require **macOS** with a Touch ID sensor and the **Xcode Command Line Tools** (`xcode-select --install`); the compiled helper is cached under `~/.cache/touchid-keychain/`. On other platforms `touchenv` is a plain dotenvx passthrough (see below).
 
 ## `touchenv` — keychain-aware dotenvx
 
@@ -79,6 +79,11 @@ safe in a shared `package.json`. Override any default per project:
 ```
 
 It runs the project-local `dotenvx` if present, else one on `PATH`.
+
+**Cross-platform:** the package installs everywhere (the Swift helper only
+compiles at runtime, on macOS). On non-macOS — Linux, CI, Vercel — `touchenv` is
+a plain dotenvx passthrough with no keychain involvement, so it never breaks a
+build; dotenvx just uses its normal key resolution.
 
 ## How it works (and what it does / doesn't protect)
 

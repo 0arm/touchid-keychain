@@ -1,6 +1,6 @@
 {
   "name": "touchid-keychain",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Store and retrieve secrets in the macOS login Keychain, gated by Touch ID. No Apple Developer cert required. Includes touchenv, a keychain-aware dotenvx front end.",
   "type": "module",
   "main": "index.js",
@@ -20,9 +20,6 @@
   "engines": {
     "node": ">=18"
   },
-  "os": [
-    "darwin"
-  ],
   "keywords": [
     "macos",
     "keychain",

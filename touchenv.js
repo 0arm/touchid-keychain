@@ -32,7 +32,10 @@ const account = cfg.account || 'DOTENV_PRIVATE_KEY'
 const gate = cfg.gate || 'DOTENV_USE_KEYCHAIN'
 
 const env = { ...process.env }
-if (isEnabled(gate)) {
+// Keychain is macOS-only. Everywhere else (Linux/CI/Vercel) touchenv is a plain
+// dotenvx passthrough, so it never breaks a build — dotenvx falls back to its
+// normal key resolution (DOTENV_PRIVATE_KEY in the env, or .env.keys).
+if (process.platform === 'darwin' && isEnabled(gate)) {
   try {
     env[account] = await new Keychain({ service }).get(account)
   } catch (err) {
