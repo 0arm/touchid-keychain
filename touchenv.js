@@ -1,212 +1,211 @@
 #!/usr/bin/env node
-// touchenv — keychain-aware dotenvx, plus raw Touch ID keychain access.
+// touchenv — keychain-aware dotenvx.
 //
-//   touchenv <dotenvx args...>     run dotenvx, injecting DOTENV_PRIVATE_KEY from
-//                                  the macOS Keychain (Touch ID) when opted in
-//   touchenv keychain seed         store the key from .env.keys into the keychain
-//   touchenv keychain get|set|run  raw keychain access (see usage)
-//
-// dotenvx stays 100% vanilla — this is just a front door. On non-macOS the
-// keychain is skipped entirely and touchenv is a plain dotenvx passthrough, so
-// it's safe in Linux/CI/Vercel builds.
+// Default behavior is a passthrough: every command other than `keychain` is
+// forwarded to dotenvx with DOTENV_PRIVATE_KEY injected from the macOS Keychain
+// (Touch ID). The `keychain` group manages that stored key. Off macOS the
+// keychain is skipped and this is a plain dotenvx passthrough, so it's safe in
+// Linux/CI/Vercel builds where the key comes from the real environment.
 import { spawn } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Command } from 'commander'
 import { Keychain } from './index.js'
-import { isEnabled } from './util.js'
+import { isEnabled, resolveConfig } from './util.js'
 
 const argv = process.argv.slice(2)
+const RESERVED = new Set(['keychain', '-h', '--help', '-V', '--version', 'help'])
 
-if (argv[0] === '-h' || argv[0] === '--help') {
-  usage(0)
-} else if (argv[0] === 'keychain') {
-  await keychainCli(argv.slice(1))
-} else if (argv[0] === 'inject') {
-  await injectCli(argv.slice(1))
+if (argv.length > 0 && !RESERVED.has(argv[0])) {
+  await dotenvxPassthrough(argv)
 } else {
-  await dotenvxProxy(argv)
+  await buildCli().parseAsync(process.argv)
 }
 
-// --- keychain-aware dotenvx ------------------------------------------------
+// --- keychain-aware dotenvx passthrough ------------------------------------
 
-async function dotenvxProxy(args) {
+async function dotenvxPassthrough(args) {
   const { service, account, gate } = resolveConfig()
-
   const env = { ...process.env }
-  // Keychain is macOS-only; everywhere else this is a plain dotenvx passthrough.
+
   if (process.platform === 'darwin' && isEnabled(gate)) {
     try {
-      env[account] = await new Keychain({ service }).get(account)
+      const kc = new Keychain(service, { account, reason: `unlock ${account} for dotenvx` })
+      env[account] = await kc.get()
     } catch (err) {
-      process.stderr.write(`${err.message}\n`)
-      process.exit(1)
+      fail(err.message)
     }
   }
 
-  const localDotenvx = join(process.cwd(), 'node_modules', '.bin', 'dotenvx')
-  forward(existsSync(localDotenvx) ? localDotenvx : 'dotenvx', args, env, 'dotenvx not found (install it in the project or globally)')
+  const local = join(process.cwd(), 'node_modules', '.bin', 'dotenvx')
+  const bin = existsSync(local) ? local : 'dotenvx'
+  forward(bin, args, env, 'dotenvx not found (install @dotenvx/dotenvx in the project or globally)')
 }
 
-// --- inject one keychain secret, then exec an arbitrary command ------------
+// --- keychain management CLI (commander) -----------------------------------
 
-// touchenv inject [-s <service>] [--as VAR] [--gate ENV] -- <cmd...>
-//
-// Like the bare `touchenv` proxy — service/account/gate resolved from the
-// project's package.json convention, Touch ID gated, macOS-only — but execs
-// <cmd> directly instead of dotenvx. For tools that decrypt the env themselves
-// (e.g. the dotenvx-next Next.js plugin) and only need DOTENV_PRIVATE_KEY
-// present in the environment. Off macOS (CI/Vercel) it's a plain passthrough.
-async function injectCli(args) {
-  const sep = args.indexOf('--')
-  if (sep === -1 || sep === args.length - 1) usage()
+function buildCli() {
+  const program = new Command()
+  program
+    .name('touchenv')
+    .description('keychain-aware dotenvx — keep the dotenvx private key behind Touch ID')
+    .version(pkgVersion(), '-V, --version')
+    .addHelpText(
+      'after',
+      `
+Passthrough:
+  Any command other than 'keychain' is forwarded to dotenvx with
+  DOTENV_PRIVATE_KEY injected from the macOS Keychain (Touch ID):
 
-  const cfg = resolveConfig()
-  const flags = parseFlags(args.slice(0, sep))
-  const service = flags.service || cfg.service
-  const account = flags.account || cfg.account
-  const gate = flags.gate || cfg.gate
-  const command = args.slice(sep + 1)
+    touchenv run -- next build      run a command with the decrypted env
+    touchenv decrypt                decrypt .env in place
+    touchenv encrypt                encrypt .env in place
+    touchenv set FOO bar            set + encrypt a variable
 
-  const env = { ...process.env }
-  if (process.platform === 'darwin' && isEnabled(gate)) {
-    try {
-      env[flags.as || account] = await new Keychain({ service }).get(account)
-    } catch (err) {
-      process.stderr.write(`${err.message}\n`)
-      process.exit(1)
-    }
-  }
-  forward(command[0], command.slice(1), env, command[0] + ' not found')
-}
+  Off macOS this is a plain dotenvx passthrough.`
+    )
 
-// --- raw keychain access ---------------------------------------------------
+  const kc = program
+    .command('keychain')
+    .description('manage the dotenvx private key stored in the keychain')
 
-async function keychainCli(args) {
-  const action = args.shift()
-  if (!['get', 'set', 'run', 'seed'].includes(action)) usage()
+  const withTarget = (cmd) =>
+    cmd
+      .option('-s, --service <name>', 'keychain service (default: <project>-dotenv)')
+      .option('-a, --account <name>', 'item name (default: DOTENV_PRIVATE_KEY)')
 
-  try {
-    if (action === 'get' || action === 'set') {
-      const { service, account } = parseFlags(args)
-      if (!service || !account) usage()
-      const kc = new Keychain({ service })
-      if (action === 'get') {
-        process.stdout.write(await kc.get(account))
-      } else {
-        await kc.set(account, await readStdin())
-        process.stderr.write(`stored '${account}' in keychain service '${service}'\n`)
-      }
-    } else if (action === 'seed') {
-      // Read the dotenvx private key out of .env.keys and store it, so it can be
-      // removed from disk. Defaults come from the project convention.
-      const cfg = resolveConfig()
-      let { service, account } = cfg
-      let from = '.env.keys'
-      for (let i = 0; i < args.length; i++) {
-        if (args[i] === '--service' || args[i] === '-s') service = args[++i]
-        else if (args[i] === '--account' || args[i] === '-a') account = args[++i]
-        else if (args[i] === '--from') from = args[++i]
-      }
-      if (!existsSync(from)) throw new Error(`${from} not found (run from the project root)`)
-      const line = readFileSync(from, 'utf8').split('\n').find(l => l.startsWith(account + '='))
-      if (!line) throw new Error(`${account} not found in ${from}`)
+  withTarget(kc.command('import'))
+    .description('store the private key from .env.keys into the keychain (Touch ID)')
+    .option('--from <file>', 'source dotenvx keys file', '.env.keys')
+    .action(async (opts) => {
+      const { service, account } = target(opts)
+      if (!existsSync(opts.from)) fail(`${opts.from} not found (run from the project root)`)
+      const line = readFileSync(opts.from, 'utf8')
+        .split('\n')
+        .find((l) => l.startsWith(account + '='))
+      if (!line) fail(`${account} not found in ${opts.from}`)
       const value = line.slice(account.length + 1).trim().replace(/^["']|["']$/g, '')
-      if (!value) throw new Error(`${account} is empty in ${from}`)
+      if (!value) fail(`${account} is empty in ${opts.from}`)
+      await run(() => new Keychain(service, { account }).set(value))
+      ok(`stored '${account}' in keychain service '${service}'.\n` +
+        `now opt in (DOTENV_USE_KEYCHAIN=true) and remove ${account} from ${opts.from}.`)
+    })
 
-      await new Keychain({ service }).set(account, value)
-      process.stderr.write(
-        `stored '${account}' in keychain service '${service}'.\n` +
-        `now opt in (e.g. DOTENV_USE_KEYCHAIN=true) and remove ${account} from ${from}.\n`)
-    } else {
-      // run: inject one secret into the env, then exec the command after `--`
-      const sep = args.indexOf('--')
-      if (sep === -1 || sep === args.length - 1) usage()
-      const { service, account, as, gate } = parseFlags(args.slice(0, sep))
-      const command = args.slice(sep + 1)
-      if (!service || !account) usage()
-
-      const env = { ...process.env }
-      if (!gate || isEnabled(gate)) {
-        env[as || account] = await new Keychain({ service }).get(account)
+  withTarget(kc.command('export'))
+    .description('write the stored key back to a dotenvx keys file (Touch ID)')
+    .option('--to <file>', 'destination keys file', '.env.keys')
+    .action(async (opts) => {
+      const { service, account } = target(opts)
+      const value = await run(() => new Keychain(service, { account }).get())
+      const entry = `${account}="${value}"`
+      let lines = existsSync(opts.to) ? readFileSync(opts.to, 'utf8').split('\n') : []
+      const idx = lines.findIndex((l) => l.startsWith(account + '='))
+      if (idx >= 0) {
+        lines[idx] = entry // replace just this key, preserve the rest
+      } else {
+        while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
+        lines.push(entry)
       }
-      forward(command[0], command.slice(1), env, command[0] + ' not found')
-    }
-  } catch (err) {
-    process.stderr.write(`${err.message}\n`)
-    process.exit(1)
-  }
+      writeFileSync(opts.to, lines.join('\n') + '\n')
+      ok(`wrote '${account}' to ${opts.to} — plaintext on disk, delete it when you're done.`)
+    })
+
+  withTarget(kc.command('set'))
+    .description('store the private key, read from stdin (Touch ID)')
+    .action(async (opts) => {
+      const { service, account } = target(opts)
+      const value = await readStdin()
+      if (!value) fail('no value on stdin')
+      await run(() => new Keychain(service, { account }).set(value))
+      ok(`stored '${account}' in keychain service '${service}'`)
+    })
+
+  withTarget(kc.command('get'))
+    .description('print the stored key to stdout (Touch ID)')
+    .action(async (opts) => {
+      const { service, account } = target(opts)
+      const value = await run(() => new Keychain(service, { account }).get())
+      process.stdout.write(value)
+    })
+
+  withTarget(kc.command('rm'))
+    .description('remove the stored key (e.g. to rotate it)')
+    .action(async (opts) => {
+      const { service, account } = target(opts)
+      await run(() => new Keychain(service, { account }).delete())
+      ok(`removed '${account}' from keychain service '${service}'`)
+    })
+
+  withTarget(kc.command('status'))
+    .description('show the resolved config and whether the key is stored')
+    .action(async (opts) => {
+      const { service, account, gate } = target(opts)
+      const lines = [
+        `service:  ${service}`,
+        `account:  ${account}`,
+        `gate:     ${gate} (${isEnabled(gate) ? 'enabled' : 'disabled'})`,
+      ]
+      if (process.platform !== 'darwin') {
+        lines.push('stored:   n/a (keychain is macOS-only)')
+      } else {
+        const present = await run(() => new Keychain(service, { account }).has())
+        lines.push(`stored:   ${present ? 'yes' : 'no'}`)
+      }
+      process.stdout.write(lines.join('\n') + '\n')
+    })
+
+  return program
 }
 
 // --- helpers ---------------------------------------------------------------
 
-// service/account/gate from the project's package.json, else by convention.
-function resolveConfig() {
-  let pkg = {}
-  try {
-    pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))
-  } catch {
-    // no package.json — fall back to directory-name convention
-  }
-  const cfg = pkg.touchenv || {}
-  const projectName = pkg.name ? pkg.name.split('/').pop() : basename(process.cwd())
+function target(opts) {
+  const cfg = resolveConfig()
   return {
-    service: cfg.service || `${projectName}-dotenv`,
-    account: cfg.account || 'DOTENV_PRIVATE_KEY',
-    gate: cfg.gate || 'DOTENV_USE_KEYCHAIN',
+    service: opts.service || cfg.service,
+    account: opts.account || cfg.account,
+    gate: cfg.gate,
+  }
+}
+
+async function run(fn) {
+  try {
+    return await fn()
+  } catch (err) {
+    fail(err.message)
   }
 }
 
 function forward(bin, args, env, notFoundMsg) {
   const child = spawn(bin, args, { stdio: 'inherit', env })
-  child.on('error', err => {
-    process.stderr.write(`touchenv: ${err.code === 'ENOENT' ? notFoundMsg : err.message}\n`)
-    process.exit(1)
-  })
+  child.on('error', (err) => fail(err.code === 'ENOENT' ? notFoundMsg : err.message))
   child.on('exit', (code, signal) => process.exit(signal ? 1 : code ?? 0))
 }
 
-function parseFlags(args) {
-  let service, account, as, gate
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--service' || args[i] === '-s') service = args[++i]
-    else if (args[i] === '--as') as = args[++i]
-    else if (args[i] === '--gate') gate = args[++i]
-    else account = args[i]
-  }
-  return { service, account, as, gate }
-}
-
 function readStdin() {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let data = ''
     process.stdin.setEncoding('utf8')
-    process.stdin.on('data', c => { data += c })
+    process.stdin.on('data', (c) => (data += c))
     process.stdin.on('end', () => resolve(data.trim()))
   })
 }
 
-function usage(code = 1) {
-  process.stderr.write(`touchenv — keychain-aware dotenvx + Touch ID keychain access
+function pkgVersion() {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    return JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version
+  } catch {
+    return '0.0.0'
+  }
+}
 
-usage:
-  touchenv <dotenvx args...>      run dotenvx, injecting DOTENV_PRIVATE_KEY from
-                                  the keychain (Touch ID) when opted in via the
-                                  gate env var (default DOTENV_USE_KEYCHAIN)
-  touchenv inject [-s <service>] [--as VAR] [--gate ENV] -- <cmd...>
-                                  inject the private key (convention-resolved,
-                                  Touch ID gated, macOS-only) then exec <cmd> —
-                                  for tools that decrypt the env themselves
-  touchenv keychain seed [-s <service>] [-a <account>] [--from .env.keys]
-                                  store the dotenvx private key from .env.keys
-  touchenv keychain get -s <service> <account>
-  touchenv keychain set -s <service> <account>            # secret read from stdin
-  touchenv keychain run -s <service> <account> [--as VAR] [--gate ENV] -- <cmd...>
+function ok(msg) {
+  process.stderr.write(msg + '\n')
+}
 
-examples:
-  touchenv keychain seed          # one-time: .env.keys -> keychain
-  touchenv run --convention=nextjs -- next dev
-  touchenv inject -- next build   # key only; plugin/tool does the decrypt
-  touchenv decrypt
-`)
-  process.exit(code)
+function fail(msg) {
+  process.stderr.write(`touchenv: ${msg}\n`)
+  process.exit(1)
 }

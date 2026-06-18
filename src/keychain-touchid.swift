@@ -1,13 +1,18 @@
-// keychain-touchid — store/fetch a secret in the macOS login Keychain, gated by
-// Touch ID.
+// keychain-touchid — store/fetch/delete a secret in the macOS login Keychain,
+// gated by Touch ID for reads and writes.
 //
-//   keychain-touchid set <service> <account>   # secret read from stdin
-//   keychain-touchid get <service> <account>   # secret written to stdout
+//   keychain-touchid set    <service> <account>   # secret read from stdin (Touch ID)
+//   keychain-touchid get    <service> <account>   # secret written to stdout (Touch ID)
+//   keychain-touchid delete <service> <account>   # remove the item (no prompt)
+//   keychain-touchid has    <service> <account>   # exit 0 if present, 5 if absent (no prompt)
 //
 // The Keychain item is created by THIS binary, so its default ACL trusts only
 // this code identity: `security find-generic-password` (and any other app) gets
 // a deny-able prompt instead of silent access, while this tool reads it after a
 // successful Touch ID check.
+//
+// `has` and `delete` don't read the secret data, so they don't trip the
+// biometric ACL — only `get`/`set` evaluate a Touch ID policy.
 //
 // No entitlement is used — the data-protection keychain's OS-enforced biometric
 // ACL needs a provisioning profile a bare CLI can't embed, so we use the legacy
@@ -94,13 +99,61 @@ func fetchSecret(service: String, account: String) -> Never {
     }
 }
 
+// Remove the item. Doesn't read the secret, so no Touch ID. Idempotent: a
+// missing item is treated as success so callers can `delete` without checking.
+func deleteSecret(service: String, account: String) -> Never {
+    let status = SecItemDelete([
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+    ] as CFDictionary)
+
+    switch status {
+    case errSecSuccess, errSecItemNotFound:
+        exit(0)
+    default:
+        die("could not delete '\(account)': \(describe(status))", 2)
+    }
+}
+
+// Existence check only — does not return the secret data, so it doesn't trip the
+// biometric ACL. Exit 0 if present, 5 if absent (mirrors `get`'s not-found code).
+func hasSecret(service: String, account: String) -> Never {
+    let status = SecItemCopyMatching([
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+    ] as CFDictionary, nil)
+
+    switch status {
+    case errSecSuccess:
+        exit(0)
+    case errSecItemNotFound:
+        exit(5)
+    default:
+        die("could not query '\(account)': \(describe(status))", 2)
+    }
+}
+
 let args = Array(CommandLine.arguments.dropFirst())
-guard args.count >= 3, args[0] == "get" || args[0] == "set" else {
-    die("usage: keychain-touchid <get|set> <service> <account>  (set reads secret from stdin)")
+let actions = ["get", "set", "delete", "has"]
+guard args.count >= 3, actions.contains(args[0]) else {
+    die("usage: keychain-touchid <get|set|delete|has> <service> <account>  (set reads secret from stdin)")
 }
 let action = args[0]
 let service = args[1]
 let account = args[2]
+
+// Reads/writes go through Touch ID; existence and deletion do not.
+switch action {
+case "delete":
+    deleteSecret(service: service, account: account)
+case "has":
+    hasSecret(service: service, account: account)
+default:
+    break
+}
 
 let ctx = LAContext()
 ctx.touchIDAuthenticationAllowableReuseDuration = 0 // prompt every time

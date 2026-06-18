@@ -1,7 +1,7 @@
 {
   "name": "touchenv",
-  "version": "0.8.0",
-  "description": "Keychain-aware dotenvx for macOS: decrypt your .env with the dotenvx private key stored behind Touch ID. Plain dotenvx passthrough off macOS. No Apple Developer cert required.",
+  "version": "1.0.0",
+  "description": "Keychain-aware dotenvx for macOS: keep the dotenvx private key in the Keychain behind Touch ID instead of a plaintext .env.keys. Plain dotenvx passthrough off macOS.",
   "type": "module",
   "main": "index.js",
   "exports": "./index.js",
@@ -18,13 +18,29 @@
   "engines": {
     "node": ">=18"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0arm/touchenv.git"
+  },
+  "homepage": "https://github.com/0arm/touchenv#readme",
+  "bugs": {
+    "url": "https://github.com/0arm/touchenv/issues"
+  },
+  "author": "Raqeeb (https://github.com/0arm)",
   "keywords": [
+    "dotenvx",
+    "dotenv",
+    "env",
     "macos",
     "keychain",
     "touchid",
     "biometrics",
     "secrets",
+    "credentials",
     "security"
   ],
+  "dependencies": {
+    "commander": "^14.0.1"
+  },
   "license": "MIT"
 }

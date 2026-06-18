@@ -1,6 +1,6 @@
 # touchenv
 
-Keychain-aware [dotenvx](https://dotenvx.com) for macOS: decrypt your `.env` with the dotenvx private key stored behind **Touch ID** instead of sitting in a plaintext `.env.keys` on disk. **No Apple Developer cert required**, and it's a plain dotenvx passthrough off macOS so it never breaks CI/Linux builds.
+Keychain-aware [dotenvx](https://dotenvx.com) for macOS: keep the dotenvx private key in the **macOS Keychain behind Touch ID** instead of a plaintext `.env.keys` on disk. dotenvx encrypts your `.env`; touchenv is the missing piece — **where the private key lives**. **No Apple Developer cert required**, and it's a plain dotenvx passthrough off macOS so it never breaks CI/Linux builds.
 
 ```bash
 touchenv run --convention=nextjs -- next dev   # Touch ID, then dotenvx run …
@@ -10,25 +10,25 @@ touchenv decrypt                               # any dotenvx command works
 ## Install
 
 ```bash
-npm install github:0arm/touchenv      # or: bun add github:0arm/touchenv
-npm install -g github:0arm/touchenv   # global, use `touchenv` anywhere
+npm install touchenv        # or: bun add touchenv
+npm install -g touchenv     # global, use `touchenv` anywhere
 ```
 
-Installs on **any platform** — the Swift helper compiles lazily on first use, so nothing native runs at install time. The keychain features need **macOS** with Touch ID and the **Xcode Command Line Tools** (`xcode-select --install`).
+Installs on **any platform** — the Swift helper compiles lazily on first use, so nothing native runs at install time. The keychain features need **macOS** with Touch ID and the **Xcode Command Line Tools** (`xcode-select --install`). You also need `dotenvx` available (project-local or global) for the passthrough.
 
-## How `touchenv` works
+## How it works
 
-`touchenv <args…>` forwards everything to the real `dotenvx` (project-local if present, else on `PATH`). Before doing so, *when opted in*, it fetches `DOTENV_PRIVATE_KEY` from the macOS Keychain behind a Touch ID prompt and exports it, so dotenvx decrypts with it.
+`touchenv <args…>` forwards everything to the real `dotenvx`. Before doing so, *when opted in*, it fetches `DOTENV_PRIVATE_KEY` from the Keychain behind a Touch ID prompt and injects it, so dotenvx decrypts with it.
 
 - **Opt-in** via a gate env var (default `DOTENV_USE_KEYCHAIN`), checked in the environment then `.env.local` / `.env`. Not truthy → no prompt, plain passthrough.
-- **Non-macOS** → keychain skipped entirely, plain passthrough. Safe on Vercel/Linux (dotenvx uses its normal key resolution — e.g. a `DOTENV_PRIVATE_KEY` env var).
+- **Non-macOS** → keychain skipped entirely. Safe on Vercel/Linux/CI, where dotenvx uses its normal key resolution (a `DOTENV_PRIVATE_KEY` env var).
 - **Zero config by convention** — `service` = `"<package-name>-dotenv"`, `account` = `DOTENV_PRIVATE_KEY`, `gate` = `DOTENV_USE_KEYCHAIN`. Override per project in `package.json`:
 
 ```jsonc
 "touchenv": { "service": "my-svc", "account": "DOTENV_PRIVATE_KEY", "gate": "USE_KEYCHAIN" }
 ```
 
-A typical `package.json`:
+Typical `package.json` scripts:
 
 ```jsonc
 "scripts": {
@@ -37,35 +37,35 @@ A typical `package.json`:
 }
 ```
 
-## Seeding the keychain
+## Managing the key
 
-One-time: pull `DOTENV_PRIVATE_KEY` out of `.env.keys` into the keychain (service/account come from the convention, so usually no args):
-
-```bash
-touchenv keychain seed
-# then: set DOTENV_USE_KEYCHAIN=true and delete DOTENV_PRIVATE_KEY from .env.keys
-```
-
-Override the source or names if needed: `touchenv keychain seed -s <service> -a <account> --from <file>`.
-
-The lower-level `keychain` subcommands are there too:
+The `keychain` group manages the stored key. Service/account come from the convention, so usually no flags are needed.
 
 ```bash
-touchenv keychain get -s my-app-dotenv DOTENV_PRIVATE_KEY
-printf '%s' "$SECRET" | touchenv keychain set -s my-app-dotenv DOTENV_PRIVATE_KEY
+touchenv keychain import     # one-time: pull DOTENV_PRIVATE_KEY from .env.keys into the keychain (Touch ID)
+                             # then set DOTENV_USE_KEYCHAIN=true and delete .env.keys
+touchenv keychain status     # show service/account/gate and whether the key is stored (no prompt)
+touchenv keychain export     # write the key back to .env.keys (Touch ID) — for recovery/migration
+touchenv keychain rm         # remove the stored key (e.g. to rotate)
+touchenv keychain get        # print the key (Touch ID)
+touchenv keychain set        # store the key from stdin (Touch ID)
 ```
 
-`touchenv keychain run -s <service> <account> [--as VAR] [--gate ENV] -- <cmd…>` is the generic primitive `touchenv` is built on: fetch one secret (Touch ID), export it as `VAR`, exec `<cmd>`.
+Flags on any of them: `-s, --service <name>`, `-a, --account <name>`; `import`/`export` also take `--from`/`--to <file>` (default `.env.keys`).
 
 ## JS API
 
 ```js
 import { Keychain } from 'touchenv'
 
-const kc = new Keychain({ service: 'my-app-dotenv' })
-await kc.set('API_KEY', 'secret')   // Touch ID
-const key = await kc.get('API_KEY') // Touch ID
+const kc = new Keychain('my-app-dotenv', { account: 'API_KEY' })
+await kc.set('secret')   // Touch ID
+const v = await kc.get() // Touch ID
+await kc.has()           // existence check — no prompt
+await kc.delete()        // remove — no prompt
 ```
+
+`account` can be set once on the instance and overridden per call (`kc.get('OTHER')`). Reads and writes prompt Touch ID; `has` and `delete` don't (they never touch the secret data). A missing item makes `get` reject with `err.code === 5`.
 
 ## Security model (honest)
 

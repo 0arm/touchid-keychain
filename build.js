@@ -48,7 +48,7 @@ export async function ensureBinary({ identity = 'auto' } = {}) {
       `installed? Run \`xcode-select --install\`.\n${detail}`)
   }
 
-  execFileSync('codesign', ['-f', '-s', signingIdentity, bin])
+  execFileSync('codesign', ['-f', '-s', signingIdentity, bin], { stdio: ['ignore', 'ignore', 'pipe'] })
   return bin
 }
 
