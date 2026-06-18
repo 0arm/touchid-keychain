@@ -16,7 +16,6 @@ On macOS, `touchenv` fetches the private key only after local user authenticatio
 
 No Apple Developer Program membership is required.
 
----
 
 ## Why?
 
@@ -33,7 +32,6 @@ after:  macOS Keychain + Touch ID
 
 Your commands stay the same. Your key is no longer sitting in a plaintext dotfile.
 
----
 
 ## Install
 
@@ -70,7 +68,6 @@ xcode-select --install
 
 `touchenv` also expects `dotenvx` to be available either locally in the project or on your `PATH`.
 
----
 
 ## Quick start
 
@@ -114,7 +111,6 @@ echo "DOTENV_USE_KEYCHAIN=true" >> .env.local
 rm .env.keys
 ```
 
----
 
 ## Usage
 
@@ -141,7 +137,6 @@ touchenv ls
 touchenv decrypt
 ```
 
----
 
 ## Managing the stored key
 
@@ -210,7 +205,6 @@ Supported flags:
 
 `export` refuses to overwrite an existing file unless `--force` is passed.
 
----
 
 ## Rotating keys
 
@@ -233,7 +227,6 @@ To rotate a specific env file, pass the dotenvx flags through:
 touchenv rotate -f .env.production
 ```
 
----
 
 ## How it works
 
@@ -257,7 +250,6 @@ When the gate is disabled, `touchenv` is just a passthrough.
 
 When not running on macOS, the Keychain path is skipped entirely.
 
----
 
 ## Configuration
 
@@ -283,7 +275,6 @@ account: DOTENV_PRIVATE_KEY
 gate:    DOTENV_USE_KEYCHAIN
 ```
 
----
 
 ## CI and hosted builds
 
@@ -299,7 +290,6 @@ DOTENV_PRIVATE_KEY=...
 
 On non-macOS systems, `touchenv` simply forwards to `dotenvx`, so Linux builds, Docker builds, and hosted deployments keep working normally.
 
----
 
 ## JavaScript API
 
@@ -334,7 +324,6 @@ A missing item rejects with:
 err.code === 5
 ```
 
----
 
 ## Security model
 
@@ -359,7 +348,6 @@ This means:
 
 The built-in macOS `security` CLI cannot create Touch ID-gated generic password items. `touchenv` therefore uses a signed helper and a Keychain trusted-application ACL. With a stable Apple Development certificate, macOS can remember the helper identity and allow one-time approval. Ad-hoc signing also works, but may require re-approval after the helper is rebuilt.
 
----
 
 ## License
 
