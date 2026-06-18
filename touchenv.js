@@ -19,14 +19,7 @@ import { Command } from 'commander'
 import { Keychain } from './index.js'
 import { isEnabled, resolveConfig } from './util.js'
 
-const argv = process.argv.slice(2)
 const RESERVED = new Set(['keychain', '-h', '--help', '-V', '--version', 'help'])
-
-if (argv.length > 0 && !RESERVED.has(argv[0])) {
-  await dotenvxPassthrough(argv)
-} else {
-  await buildCli().parseAsync(process.argv)
-}
 
 // --- keychain-aware dotenvx passthrough ------------------------------------
 
@@ -227,4 +220,17 @@ function ok(msg) {
 function fail(msg) {
   process.stderr.write(`touchenv: ${msg}\n`)
   process.exit(1)
+}
+
+// --- entry point -----------------------------------------------------------
+// Run last, after every const above is initialized. The top-level await here
+// suspends module evaluation, so anything declared below this point would still
+// be in its temporal dead zone when an action callback fires.
+
+const argv = process.argv.slice(2)
+
+if (argv.length > 0 && !RESERVED.has(argv[0])) {
+  await dotenvxPassthrough(argv)
+} else {
+  await buildCli().parseAsync(process.argv)
 }
