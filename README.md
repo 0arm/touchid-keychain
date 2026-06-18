@@ -25,13 +25,13 @@ The package installs on any platform; the Swift helper is compiled on first use,
 If the project already uses dotenvx (an encrypted `.env` and a `.env.keys`):
 
 ```bash
-touchenv keychain import                  # .env.keys -> Keychain (Touch ID)
+touchenv keychain store                   # .env.keys -> Keychain (Touch ID)
 echo "DOTENV_USE_KEYCHAIN=true" >> .env.local
 rm .env.keys                              # the key now lives only in the Keychain
 touchenv run -- node server.js            # key is pulled from the Keychain
 ```
 
-If you haven't encrypted yet, run `touchenv encrypt` first, then import.
+If you haven't encrypted yet, run `touchenv encrypt` first, then store.
 
 Verify the resolved configuration without a prompt:
 
@@ -68,15 +68,13 @@ touchenv ls
 The `keychain` group operates on the stored key. Service and account default by convention, so flags are rarely needed.
 
 ```bash
-touchenv keychain import        # .env.keys -> Keychain (Touch ID)
+touchenv keychain store         # .env.keys -> Keychain (Touch ID)
 touchenv keychain export        # Keychain -> .env.keys (Touch ID), for recovery or migration
-touchenv keychain status        # configuration and whether the key is stored (no prompt)
-touchenv keychain rm            # remove the key, e.g. before rotating
-touchenv keychain get           # print the key (Touch ID)
-echo "$KEY" | touchenv keychain set   # store from stdin (Touch ID)
+touchenv keychain status        # configuration and whether the keys are stored (no prompt)
+touchenv keychain rm            # remove the stored keys, e.g. before rotating
 ```
 
-Each accepts `-s, --service <name>` and `-a, --account <name>`; `import` and `export` also take `--from` / `--to <file>` (default `.env.keys`).
+Each accepts `-s, --service <name>` and `-a, --account <name>`. `store` takes `--from <file>` and `export` takes `--to <file>` (default `.env.keys`); `export` refuses to overwrite an existing file unless you pass `--force`. Raw single-value reads and writes live in the JavaScript API below.
 
 ## Behavior
 
