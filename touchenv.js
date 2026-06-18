@@ -130,9 +130,10 @@ Passthrough:
       const keys = parseKeys(readFileSync(opts.from, 'utf8'))
       const names = Object.keys(keys)
       if (!names.length) fail(`no DOTENV_PRIVATE_KEY* entries found in ${opts.from}`)
+      announce('store', service, account, `keys: ${names.join(', ')}`)
       await run(() => new Keychain(service, { account }).set(serializeKeys(keys)))
-      ok(`stored ${names.length} key(s) in '${service}': ${names.join(', ')}.\n` +
-        `now set DOTENV_USE_KEYCHAIN=true and delete ${opts.from}.`)
+      done(`stored ${names.length} key(s) in ${cyan(service)}: ${names.join(', ')}`,
+        `now set DOTENV_USE_KEYCHAIN=true and delete ${opts.from}`)
     })
 
   withTarget(kc.command('export'))
@@ -145,33 +146,38 @@ Passthrough:
         fail(`${opts.to} already exists — refusing to overwrite. ` +
           `Write elsewhere with --to <path>, or pass --force to overwrite.`)
       }
+      announce('export', service, account, `to ${opts.to}`)
       const keys = asKeys(await run(() => new Keychain(service, { account }).get()), account)
       writeFileSync(opts.to, formatKeysFile(keys))
-      ok(`wrote ${Object.keys(keys).length} key(s) to ${opts.to} — plaintext on disk, delete it when you're done.`)
+      done(`wrote ${Object.keys(keys).length} key(s) to ${cyan(opts.to)}`,
+        `plaintext on disk — delete it when you're done`)
     })
 
   withTarget(kc.command('rm'))
     .description('remove the stored keys — destructive (Touch ID or device password)')
     .action(async (opts) => {
       const { service, account } = target(opts)
+      announce('remove', service, account)
       await run(() => new Keychain(service, { account }).delete())
-      ok(`removed '${account}' from keychain service '${service}'`)
+      done(`removed ${cyan(account)} from keychain service ${cyan(service)}`)
     })
 
   withTarget(kc.command('status'))
     .description('show the resolved config and whether the keys are stored')
     .action(async (opts) => {
       const { service, account, gate } = target(opts)
+      const label = (s) => dim(s.padEnd(9))
+      const enabled = isEnabled(gate)
       const lines = [
-        `service:  ${service}`,
-        `account:  ${account}`,
-        `gate:     ${gate} (${isEnabled(gate) ? 'enabled' : 'disabled'})`,
+        `${label('service:')}${cyan(service)}`,
+        `${label('account:')}${cyan(account)}`,
+        `${label('gate:')}${gate} ${enabled ? green('(enabled)') : yellow('(disabled)')}`,
       ]
       if (process.platform !== 'darwin') {
-        lines.push('stored:   n/a (keychain is macOS-only)')
+        lines.push(`${label('stored:')}${yellow('n/a (keychain is macOS-only)')}`)
       } else {
         const present = await run(() => new Keychain(service, { account }).has())
-        lines.push(`stored:   ${present ? 'yes' : 'no'}`)
+        lines.push(`${label('stored:')}${present ? green('yes') : yellow('no')}`)
       }
       process.stdout.write(lines.join('\n') + '\n')
     })
@@ -213,12 +219,37 @@ function pkgVersion() {
   }
 }
 
+// --- output styling --------------------------------------------------------
+// ANSI colors, disabled when output is piped or NO_COLOR is set (no-color.org).
+
+const useColor = 'FORCE_COLOR' in process.env ||
+  (!('NO_COLOR' in process.env) && process.stdout.isTTY && process.stderr.isTTY)
+const sgr = (code) => (s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : String(s))
+const bold = sgr('1')
+const dim = sgr('2')
+const red = sgr('31')
+const green = sgr('32')
+const yellow = sgr('33')
+const cyan = sgr('36')
+
 function ok(msg) {
   process.stderr.write(msg + '\n')
 }
 
+// A completed action: green check, optional dimmed follow-up hint.
+function done(msg, hint) {
+  ok(`${green('✓')} ${msg}` + (hint ? `\n  ${dim(hint)}` : ''))
+}
+
+// Show the keychain target before the auth prompt fires, so the user can see
+// which service/account is about to be touched and cancel if it looks wrong.
+function announce(action, service, account, detail) {
+  const head = `${cyan('⧗')} ${bold(action)} ${dim('·')} service ${cyan(service)}, account ${cyan(account)}`
+  ok(detail ? `${head}\n  ${dim(detail)}` : head)
+}
+
 function fail(msg) {
-  process.stderr.write(`touchenv: ${msg}\n`)
+  process.stderr.write(`${red('✗')} ${red('touchenv:')} ${msg}\n`)
   process.exit(1)
 }
 
