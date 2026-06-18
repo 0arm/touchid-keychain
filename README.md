@@ -76,6 +76,19 @@ touchenv keychain rm            # remove the stored keys (Touch ID / device pass
 
 Each accepts `-s, --service <name>` and `-a, --account <name>`. `store` takes `--from <file>` and `export` takes `--to <file>` (default `.env.keys`); `export` refuses to overwrite an existing file unless you pass `--force`. Raw single-value reads and writes live in the JavaScript API below.
 
+### Rotating keys
+
+`dotenvx rotate` generates a fresh keypair, re-encrypts `.env`, and writes the new private key to `.env.keys`. With the key in the Keychain there is no `.env.keys` on disk, so bring it down, rotate, push the new key back, and remove the plaintext:
+
+```bash
+touchenv keychain export                  # Keychain -> .env.keys (Touch ID)
+touchenv rotate                           # re-encrypt .env, write the new key to .env.keys
+touchenv keychain store --from .env.keys  # new key -> Keychain (Touch ID), replaces the old
+rm .env.keys                              # the new key now lives only in the Keychain
+```
+
+Commit the re-encrypted `.env`. To rotate a single env file, pass it through: `touchenv rotate -f .env.production`.
+
 ## Behavior
 
 `touchenv <args>` forwards to `dotenvx`. Before forwarding, when the gate is set, it reads `DOTENV_PRIVATE_KEY` from the Keychain behind a Touch ID prompt and injects it into the environment.
