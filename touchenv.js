@@ -76,6 +76,27 @@ function asKeys(stored, account) {
   return Object.keys(keys).length ? keys : { [account]: String(stored).trim() }
 }
 
+// dotenvx's .env.keys header, so `export` reproduces the canonical format.
+const KEYS_HEADER = [
+  '#/------------------!DOTENV_PRIVATE_KEYS!-------------------/',
+  '#/ private decryption keys. DO NOT commit to source control /',
+  '#/     [how it works](https://dotenvx.com/encryption)       /',
+  '#/          ⛨ ARMORED KEYS: `dotenvx armor up`              /',
+  '#/----------------------------------------------------------/',
+].join('\n')
+
+// Reverse dotenvx's naming for the per-key comment:
+// DOTENV_PRIVATE_KEY -> .env, DOTENV_PRIVATE_KEY_PRODUCTION -> .env.production.
+function envFileFor(name) {
+  const suffix = name.slice('DOTENV_PRIVATE_KEY'.length)
+  return suffix ? '.env.' + suffix.replace(/^_/, '').toLowerCase() : '.env'
+}
+
+function formatKeysFile(keys) {
+  const blocks = Object.entries(keys).map(([k, v]) => `# ${envFileFor(k)}\n${k}="${v}"`)
+  return KEYS_HEADER + '\n\n' + blocks.join('\n\n') + '\n'
+}
+
 // --- keychain management CLI (commander) -----------------------------------
 
 function buildCli() {
@@ -133,8 +154,7 @@ Passthrough:
           `Write elsewhere with --to <path>, or pass --force to overwrite.`)
       }
       const keys = asKeys(await run(() => new Keychain(service, { account }).get()), account)
-      const body = Object.entries(keys).map(([k, v]) => `${k}="${v}"`).join('\n') + '\n'
-      writeFileSync(opts.to, body)
+      writeFileSync(opts.to, formatKeysFile(keys))
       ok(`wrote ${Object.keys(keys).length} key(s) to ${opts.to} — plaintext on disk, delete it when you're done.`)
     })
 
