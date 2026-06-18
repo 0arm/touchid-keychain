@@ -251,7 +251,7 @@ The gate is resolved from:
 2. `.env.local`
 3. `.env`
 
-When the gate is enabled on macOS, `touchenv` asks the helper to read `DOTENV_PRIVATE_KEY` from the Keychain. The helper performs a Touch ID authentication check first. If authentication succeeds, the key is injected into the child process environment and the original dotenvx command runs.
+When the gate is enabled on macOS, `touchenv` asks the helper to read `DOTENV_PRIVATE_KEY` from the Keychain. The helper performs a Touch ID authentication check first, falling back to your device password if biometrics fail or aren't enrolled. If authentication succeeds, the key is injected into the child process environment and the original dotenvx command runs.
 
 When the gate is disabled, `touchenv` is just a passthrough.
 
@@ -312,10 +312,10 @@ const kc = new Keychain('my-app-dotenv', {
   account: 'API_KEY'
 })
 
-await kc.set('s3cret')       // Touch ID
-const value = await kc.get() // Touch ID
+await kc.set('s3cret')       // Touch ID or device password
+const value = await kc.get() // Touch ID or device password
 await kc.has()               // no prompt
-await kc.delete()            // destructive
+await kc.delete()            // Touch ID or device password (destructive)
 ```
 
 The account can be set on the instance or overridden per call:
@@ -338,7 +338,7 @@ err.code === 5
 
 ## Security model
 
-`touchenv` stores your `dotenvx` private key in the macOS Keychain and requires Touch ID before releasing it to `dotenvx`.
+`touchenv` stores your `dotenvx` private key in the macOS Keychain and requires Touch ID — or your device password as a fallback — before releasing it to `dotenvx`.
 
 This is strong local user-presence protection, not a claim that the secret is impossible to extract from a compromised Mac. An attacker running arbitrary code as your user should not be able to read the key silently, but they may be able to invoke the helper and trigger an authentication prompt. Bypassing the protection should require compromising macOS, the Keychain security model, the helper, or tricking the user into approving access.
 

@@ -12,8 +12,8 @@
 // successful Touch ID check.
 //
 // `has` is a non-destructive existence check and needs no authentication.
-// `get`/`set` require Touch ID. `delete` is destructive, so it authenticates
-// too, but allows the device-password fallback in addition to Touch ID.
+// `get`/`set`/`delete` authenticate with Touch ID, falling back to the device
+// password when biometrics fail or aren't enrolled.
 //
 // No entitlement is used — the data-protection keychain's OS-enforced biometric
 // ACL needs a provisioning profile a bare CLI can't embed, so we use the legacy
@@ -149,17 +149,12 @@ if action == "has" {
     hasSecret(service: service, account: account)
 }
 
-// get/set: biometrics only, no password fallback. delete: destructive, so it
-// authenticates too but allows the device-password fallback alongside Touch ID.
-let policy: LAPolicy = action == "delete"
-    ? .deviceOwnerAuthentication
-    : .deviceOwnerAuthenticationWithBiometrics
+// All authenticated actions (get/set/delete) use Touch ID with the device-password
+// fallback, so the key stays reachable when biometrics fail or aren't enrolled.
+let policy: LAPolicy = .deviceOwnerAuthentication
 
 let ctx = LAContext()
 ctx.touchIDAuthenticationAllowableReuseDuration = 0 // prompt every time
-if action != "delete" {
-    ctx.localizedFallbackTitle = "" // hide the password fallback for get/set
-}
 var policyError: NSError?
 guard ctx.canEvaluatePolicy(policy, error: &policyError) else {
     die("authentication unavailable: \(policyError?.localizedDescription ?? "unknown")", 3)

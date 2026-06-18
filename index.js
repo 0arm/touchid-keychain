@@ -5,15 +5,15 @@ import { ensureBinary } from './build.js'
  * A Touch ID-gated handle on one macOS Keychain service.
  *
  *   const kc = new Keychain('my-app', { account: 'API_KEY' })
- *   await kc.set('secret')        // Touch ID prompt
- *   const v = await kc.get()      // Touch ID prompt
+ *   await kc.set('secret')        // Touch ID / device password
+ *   const v = await kc.get()      // Touch ID / device password
  *   await kc.has()                // existence check, no prompt
  *   await kc.delete()             // remove (Touch ID / device password)
  *
  * get/set/delete prompt for authentication; `has` does not (it never touches
- * the secret data). delete is destructive, so it allows the device-password
- * fallback in addition to Touch ID. `account` can be set once on the instance
- * and overridden per call.
+ * the secret data). All three authenticate with Touch ID, falling back to the
+ * device password when biometrics fail or aren't enrolled. `account` can be set
+ * once on the instance and overridden per call.
  */
 export class Keychain {
   /**
@@ -31,13 +31,13 @@ export class Keychain {
     this.identity = identity
   }
 
-  /** Read a secret. Prompts Touch ID. Rejects if absent (err.code === 5) or denied. */
+  /** Read a secret. Prompts Touch ID / device password. Rejects if absent (err.code === 5) or denied. */
   async get(account) {
     const out = await this.#run(['get', this.service, this.#item(account)])
     return out.replace(/\n$/, '')
   }
 
-  /** Store/replace a secret. Prompts Touch ID. Value is passed via stdin. */
+  /** Store/replace a secret. Prompts Touch ID / device password. Value is passed via stdin. */
   async set(value, account) {
     await this.#run(['set', this.service, this.#item(account)], { input: String(value) })
   }
