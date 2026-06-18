@@ -139,7 +139,7 @@ Passthrough:
     })
 
   withTarget(kc.command('rm'))
-    .description('remove the stored keys (e.g. to rotate)')
+    .description('remove the stored keys — destructive (Touch ID or device password)')
     .action(async (opts) => {
       const { service, account } = target(opts)
       await run(() => new Keychain(service, { account }).delete())

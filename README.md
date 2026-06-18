@@ -71,7 +71,7 @@ The `keychain` group operates on the stored key. Service and account default by 
 touchenv keychain store         # .env.keys -> Keychain (Touch ID)
 touchenv keychain export        # Keychain -> .env.keys (Touch ID), for recovery or migration
 touchenv keychain status        # configuration and whether the keys are stored (no prompt)
-touchenv keychain rm            # remove the stored keys, e.g. before rotating
+touchenv keychain rm            # remove the stored keys (Touch ID / device password) — destructive
 ```
 
 Each accepts `-s, --service <name>` and `-a, --account <name>`. `store` takes `--from <file>` and `export` takes `--to <file>` (default `.env.keys`); `export` refuses to overwrite an existing file unless you pass `--force`. Raw single-value reads and writes live in the JavaScript API below.
@@ -105,7 +105,7 @@ await kc.has()             // existence check, no prompt
 await kc.delete()          // remove, no prompt
 ```
 
-`account` is set on the instance and can be overridden per call (`kc.get('OTHER')`). Reads and writes prompt for Touch ID; `has` and `delete` do not, since they never read the secret. A missing item rejects `get` with `err.code === 5`.
+`account` is set on the instance and can be overridden per call (`kc.get('OTHER')`). `get`/`set`/`delete` prompt for authentication; `has` does not. `delete` is destructive, so it accepts the device-password fallback in addition to Touch ID. A missing item rejects `get` with `err.code === 5`.
 
 ## Security model
 

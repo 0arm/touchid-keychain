@@ -11,8 +11,9 @@
 // a deny-able prompt instead of silent access, while this tool reads it after a
 // successful Touch ID check.
 //
-// `has` and `delete` don't read the secret data, so they don't trip the
-// biometric ACL — only `get`/`set` evaluate a Touch ID policy.
+// `has` is a non-destructive existence check and needs no authentication.
+// `get`/`set` require Touch ID. `delete` is destructive, so it authenticates
+// too, but allows the device-password fallback in addition to Touch ID.
 //
 // No entitlement is used — the data-protection keychain's OS-enforced biometric
 // ACL needs a provisioning profile a bare CLI can't embed, so we use the legacy
@@ -22,8 +23,6 @@
 import Foundation
 import LocalAuthentication
 import Security
-
-let policy = LAPolicy.deviceOwnerAuthenticationWithBiometrics
 
 func die(_ msg: String, _ code: Int32 = 1) -> Never {
     FileHandle.standardError.write(("keychain-touchid: " + msg + "\n").data(using: .utf8)!)
@@ -99,8 +98,8 @@ func fetchSecret(service: String, account: String) -> Never {
     }
 }
 
-// Remove the item. Doesn't read the secret, so no Touch ID. Idempotent: a
-// missing item is treated as success so callers can `delete` without checking.
+// Remove the item. Idempotent: a missing item is treated as success.
+// Authentication is enforced by the caller (main) before this runs.
 func deleteSecret(service: String, account: String) -> Never {
     let status = SecItemDelete([
         kSecClass as String: kSecClassGenericPassword,
@@ -145,33 +144,44 @@ let action = args[0]
 let service = args[1]
 let account = args[2]
 
-// Reads/writes go through Touch ID; existence and deletion do not.
-switch action {
-case "delete":
-    deleteSecret(service: service, account: account)
-case "has":
+// Existence checks need no authentication and return immediately.
+if action == "has" {
     hasSecret(service: service, account: account)
-default:
-    break
 }
+
+// get/set: biometrics only, no password fallback. delete: destructive, so it
+// authenticates too but allows the device-password fallback alongside Touch ID.
+let policy: LAPolicy = action == "delete"
+    ? .deviceOwnerAuthentication
+    : .deviceOwnerAuthenticationWithBiometrics
 
 let ctx = LAContext()
 ctx.touchIDAuthenticationAllowableReuseDuration = 0 // prompt every time
-ctx.localizedFallbackTitle = ""                     // no password fallback button
+if action != "delete" {
+    ctx.localizedFallbackTitle = "" // hide the password fallback for get/set
+}
 var policyError: NSError?
 guard ctx.canEvaluatePolicy(policy, error: &policyError) else {
-    die("biometrics unavailable: \(policyError?.localizedDescription ?? "unknown")", 3)
+    die("authentication unavailable: \(policyError?.localizedDescription ?? "unknown")", 3)
 }
 
+let defaultReason: String
+switch action {
+case "get": defaultReason = "unlock a secret from the keychain"
+case "set": defaultReason = "store a secret in the keychain"
+default:    defaultReason = "remove a secret from the keychain"
+}
 let env = ProcessInfo.processInfo.environment
-let reason = env["KEYCHAIN_TOUCHID_REASON"]
-    ?? (action == "get" ? "unlock a secret from the keychain" : "store a secret in the keychain")
+let reason = env["KEYCHAIN_TOUCHID_REASON"] ?? defaultReason
 
 ctx.evaluatePolicy(policy, localizedReason: reason) { ok, evalError in
-    guard ok else { die("Touch ID failed: \(evalError?.localizedDescription ?? "denied")", 4) }
-    if action == "get" {
+    guard ok else { die("authentication failed: \(evalError?.localizedDescription ?? "denied")", 4) }
+    switch action {
+    case "get":
         fetchSecret(service: service, account: account)
-    } else {
+    case "delete":
+        deleteSecret(service: service, account: account)
+    default:
         let stdin = FileHandle.standardInput.readDataToEndOfFile()
         let secret = (String(data: stdin, encoding: .utf8) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)

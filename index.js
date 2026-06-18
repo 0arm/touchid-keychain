@@ -8,11 +8,12 @@ import { ensureBinary } from './build.js'
  *   await kc.set('secret')        // Touch ID prompt
  *   const v = await kc.get()      // Touch ID prompt
  *   await kc.has()                // existence check, no prompt
- *   await kc.delete()             // remove, no prompt
+ *   await kc.delete()             // remove (Touch ID / device password)
  *
- * Reads and writes prompt Touch ID; existence and deletion do not (they never
- * touch the secret data). `account` can be set once on the instance and
- * overridden per call.
+ * get/set/delete prompt for authentication; `has` does not (it never touches
+ * the secret data). delete is destructive, so it allows the device-password
+ * fallback in addition to Touch ID. `account` can be set once on the instance
+ * and overridden per call.
  */
 export class Keychain {
   /**
@@ -41,7 +42,7 @@ export class Keychain {
     await this.#run(['set', this.service, this.#item(account)], { input: String(value) })
   }
 
-  /** Remove the item. No prompt. Idempotent — succeeds even if absent. */
+  /** Remove the item (Touch ID, or device password as fallback). Idempotent. */
   async delete(account) {
     await this.#run(['delete', this.service, this.#item(account)])
   }
