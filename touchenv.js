@@ -97,19 +97,29 @@ function buildCli() {
     .name('touchenv')
     .description('keychain-aware dotenvx — keep the dotenvx private keys behind Touch ID')
     .version(pkgVersion(), '-V, --version')
+    .configureHelp({
+      styleTitle: (s) => bold(s),
+      styleCommandText: (s) => cyan(s),
+      styleOptionTerm: (s) => green(s),
+      styleSubcommandTerm: (s) => green(s),
+      styleArgumentTerm: (s) => green(s),
+      styleOptionDescription: (s) => dim(s),
+      styleSubcommandDescription: (s) => dim(s),
+      styleArgumentDescription: (s) => dim(s),
+    })
     .addHelpText(
       'after',
       `
-Passthrough:
+${bold('Passthrough:')}
   Any command other than 'keychain' is forwarded to dotenvx with the dotenvx
   private keys injected from the macOS Keychain (Touch ID):
 
-    touchenv run -- next build      run a command with the decrypted env
-    touchenv decrypt                decrypt .env in place
-    touchenv encrypt                encrypt .env in place
-    touchenv set FOO bar            set + encrypt a variable
+    ${cyan('touchenv run -- next build')}      ${dim('run a command with the decrypted env')}
+    ${cyan('touchenv decrypt')}                ${dim('decrypt .env in place')}
+    ${cyan('touchenv encrypt')}                ${dim('encrypt .env in place')}
+    ${cyan('touchenv set FOO bar')}            ${dim('set + encrypt a variable')}
 
-  Off macOS this is a plain dotenvx passthrough.`
+  ${dim('Off macOS this is a plain dotenvx passthrough.')}`
     )
 
   const kc = program
